@@ -1,0 +1,42 @@
+{
+  "actions": [
+    {
+      "name": "/actions/main/in/toggle_panel",
+      "type": "boolean",
+      "requirement": "suggested"
+    },
+    {
+      "name": "/actions/main/in/interact",
+      "type": "boolean",
+      "requirement": "suggested"
+    }
+  ],
+  "action_sets": [
+    {
+      "name": "/actions/main",
+      "usage": "leftright"
+    }
+  ],
+  "default_bindings": [
+    {
+      "controller_type": "knuckles",
+      "binding_url": "bindings_knuckles.json"
+    },
+    {
+      "controller_type": "oculus_touch",
+      "binding_url": "bindings_oculus_touch.json"
+    },
+    {
+      "controller_type": "vive_controller",
+      "binding_url": "bindings_vive_controller.json"
+    }
+  ],
+  "localization": [
+    {
+      "language_tag": "en_US",
+      "/actions/main": "ExfilZone Wrist Tracker",
+      "/actions/main/in/toggle_panel": "Show / hide wrist panel (hold)",
+      "/actions/main/in/interact": "Check / uncheck pointed item"
+    }
+  ]
+}

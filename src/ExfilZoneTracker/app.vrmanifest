@@ -1,0 +1,18 @@
+{
+  "source": "builtin",
+  "applications": [
+    {
+      "app_key": "zaymax.exfilzone-wrist-tracker",
+      "launch_type": "binary",
+      "binary_path_windows": "ExfilZoneTracker.exe",
+      "is_dashboard_overlay": true,
+      "action_manifest_path": "input/actions.json",
+      "strings": {
+        "en_us": {
+          "name": "ExfilZone Wrist Tracker",
+          "description": "Wrist-mounted loot checklist overlay for Contractors Showdown: ExfilZone"
+        }
+      }
+    }
+  ]
+}

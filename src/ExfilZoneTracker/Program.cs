@@ -1,14 +1,17 @@
 #nullable enable
+using System.Diagnostics;
+using Valve.VR;
 
 namespace ExfilZoneTracker;
 
 internal static class Program
 {
     private static volatile bool _running = true;
+    private static volatile bool _configChanged;
 
     private static int Main(string[] args)
     {
-        Console.WriteLine("ExfilZone Wrist Tracker - SteamVR overlay prototype");
+        Console.WriteLine("ExfilZone Wrist Tracker - SteamVR overlay");
 
         if (!OperatingSystem.IsWindows())
         {
@@ -52,22 +55,88 @@ internal static class Program
             return 1;
         }
 
-        var wrist = new WristAttachment(overlay, config);
-        Console.WriteLine($"Overlay ready. Looking for the {config.HandNormalized} controller... (Ctrl+C to quit)");
+        using var checklist = ChecklistData.LoadOrCreate(
+            Path.Combine(AppContext.BaseDirectory, "checklist.json"),
+            Path.Combine(AppContext.BaseDirectory, "data", "items_database.json"));
 
+        var wrist = new WristAttachment(overlay, config);
+        var input = new InputManager();
+        input.Initialize();
+        var ui = new ChecklistUI(overlay, config, checklist);
+
+        using var configWatcher = WatchConfig(configPath);
+
+        Console.WriteLine($"Overlay ready. Watch hand: {config.HandNormalized}, pointer hand: {(config.IsLeftHand ? "right" : "left")}. (Ctrl+C to quit)");
+
+        var clock = Stopwatch.StartNew();
+        var lastMs = clock.Elapsed.TotalMilliseconds;
         while (_running)
         {
             if (!overlay.PumpEvents(out var devicesChanged))
                 break; // SteamVR is shutting down
 
-            wrist.Update(devicesChanged);
+            if (_configChanged)
+            {
+                _configChanged = false;
+                ReloadConfig(configPath, config, overlay, wrist, ui);
+            }
 
-            // The overlay transform is device-relative: the compositor keeps it glued to the
-            // controller with no per-frame work on our side, so a slow poll loop is enough.
-            Thread.Sleep(50);
+            var now = clock.Elapsed.TotalMilliseconds;
+            var deltaMs = now - lastMs;
+            lastMs = now;
+
+            wrist.Update(devicesChanged);
+            input.Update();
+
+            if (input.PollToggleLongPress(config.ToggleHoldMs))
+                ui.ToggleVisibility();
+
+            // The free hand points at the panel; the watch hand carries it.
+            var pointerRole = config.IsLeftHand ? ETrackedControllerRole.RightHand : ETrackedControllerRole.LeftHand;
+            var pointerDevice = overlay.System.GetTrackedDeviceIndexForControllerRole(pointerRole);
+            var interactClicked = input.PollInteractClick(leftHand: !config.IsLeftHand);
+
+            ui.Update(deltaMs, wrist.Present, pointerDevice, interactClicked);
+
+            Thread.Sleep(ui.PanelShown ? 20 : 100);
         }
 
         Console.WriteLine("Clean shutdown.");
         return 0;
+    }
+
+    private static FileSystemWatcher? WatchConfig(string configPath)
+    {
+        var directory = Path.GetDirectoryName(configPath);
+        if (string.IsNullOrEmpty(directory))
+            return null;
+
+        var watcher = new FileSystemWatcher(directory, Path.GetFileName(configPath))
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+            EnableRaisingEvents = true,
+        };
+        watcher.Changed += (_, _) => _configChanged = true;
+        watcher.Created += (_, _) => _configChanged = true;
+        watcher.Renamed += (_, _) => _configChanged = true;
+        return watcher;
+    }
+
+    private static void ReloadConfig(string path, AppConfig config, OverlayManager overlay, WristAttachment wrist, ChecklistUI ui)
+    {
+        try
+        {
+            var fresh = ConfigLoader.LoadOrCreate(path);
+            config.CopyFrom(fresh);
+            OpenVR.Overlay.SetOverlayWidthInMeters(overlay.Handle, config.WidthMeters);
+            wrist.Reconfigure();
+            ui.MarkDirty();
+            Console.WriteLine("config.json reloaded, panel offset/size applied live.");
+        }
+        catch (Exception ex)
+        {
+            // Likely caught the editor mid-write; keep current settings, the next event retries.
+            Console.Error.WriteLine($"warning: config reload failed, keeping previous settings: {ex.Message}");
+        }
     }
 }

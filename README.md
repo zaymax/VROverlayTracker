@@ -12,23 +12,27 @@ The app is a pure `IVROverlay` client on top of the SteamVR compositor:
 - it knows nothing about the running game — it just draws a panel in VR space,
   next to any VR title.
 
-**Status: early prototype (milestones 1–2 of the MVP).** The app connects to
-SteamVR, shows a placeholder panel on your wrist, survives controller
-reconnects, and exits cleanly when SteamVR closes. The interactive checklist
-is the next milestone.
+**Status: MVP complete, pending in-headset verification.** Checklist on the
+wrist, laser-pointer checking with the free hand, button toggle, JSON
+persistence, live hot-reload of every data file.
 
-## Roadmap (MVP)
+## Features (MVP)
 
-- [x] **1. Overlay initialization** — connect to the SteamVR runtime, create the
-  overlay, readable error (not a crash) when SteamVR is unavailable
-- [x] **2. Wrist attachment** — panel glued to the left/right controller with a
-  configurable position/rotation offset (`config.json`)
-- [ ] **3. Show/hide toggle** — controller button binding via SteamVR Input
-- [ ] **4. Checklist UI** — items with checkboxes, laser-pointer interaction
-  (`ComputeOverlayIntersection`), state persisted to JSON
-- [ ] **5. Item picker** — search the bundled game-item database
-  ([data/items_database.json](data/items_database.json)) and add items to the
-  active checklist
+- [x] **Overlay initialization** — connects to the SteamVR runtime, readable
+  error (not a crash) when SteamVR is unavailable
+- [x] **Wrist attachment** — panel glued to the left/right controller with a
+  configurable position/rotation offset; survives controller reconnects
+- [x] **Show/hide toggle** — hold a controller button (~0.6 s); actions are
+  rebindable in SteamVR's controller-bindings UI, with a short fade in/out
+- [x] **Checklist UI** — items with checkboxes; point at the panel with the
+  free hand and pull the trigger to check/uncheck (custom laser hit-testing via
+  `ComputeOverlayIntersection`); state saved to `checklist.json` and restored
+  on launch
+- [x] **Live editing** — `config.json`, `checklist.json` and
+  `data/items_database.json` are watched and hot-reloaded; edit them on the
+  desktop and the wrist panel updates without restarting
+- [ ] Next: in-VR item picker with search over the database, laser beam
+  visual, autostart with SteamVR, scrolling for long lists
 
 Out of scope by design: memory reading, DLL injection, traffic parsing, OCR.
 
@@ -38,7 +42,7 @@ C# / .NET 8, talking to OpenVR directly through Valve's official C# binding
 (`openvr_api.cs` + `openvr_api.dll`, vendored from the
 [OpenVR SDK](https://github.com/ValveSoftware/openvr) v2.5.1 — see
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)). No Unity, no game engine:
-the panel is rendered to a pixel buffer with GDI+ and submitted via
+the panel is rendered with GDI+ into a pixel buffer and submitted via
 `IVROverlay::SetOverlayRaw`, which keeps the app a single lightweight
 executable.
 
@@ -53,7 +57,8 @@ The code cross-compiles from macOS/Linux, but only runs on Windows.
 ## Build & run (on the Windows VR machine)
 
 ```powershell
-dotnet build src/ExfilZoneTracker -c Release
+git clone https://github.com/zaymax/VROverlayTracker.git
+cd VROverlayTracker
 dotnet run --project src/ExfilZoneTracker -c Release
 ```
 
@@ -64,30 +69,34 @@ dotnet publish src/ExfilZoneTracker -c Release -r win-x64 --self-contained -p:Pu
 .\publish\ExfilZoneTracker.exe
 ```
 
-For a much smaller build that requires the .NET 8 runtime to be installed,
+For a much smaller build that requires the .NET 8 runtime on the machine,
 replace `--self-contained` with `--self-contained false`.
 
 Command line: `--hand left` / `--hand right` overrides the configured hand for
-one run without editing the config.
+one run.
 
-## What you should see (verification checklist)
+## Controls
 
-1. Start SteamVR, turn both controllers on, run the tracker.
-2. Console prints `Connected to SteamVR`, then `Panel attached to the right
-   controller (device #N)`.
-3. In the headset: a dark panel with **“Hello wrist overlay”** near your right
-   wrist/forearm. It follows the controller like a watch.
-4. Turn the controller off — the panel hides; turn it back on — it reappears.
-5. Quit SteamVR — the tracker prints `SteamVR is shutting down, exiting.` and
-   terminates on its own.
-6. Launch the tracker when SteamVR is installed but not running — SteamVR may
-   auto-start (standard behavior for overlay-type apps). If the runtime is not
-   installed or the headset is missing, you get a plain-language error and exit
-   code 1 instead of a crash.
+The panel lives on the **watch hand** (`Hand` in config, default right); the
+other, **free hand** is the pointer.
+
+| Action | Default binding | Notes |
+| --- | --- | --- |
+| Show / hide panel | hold **B** (Index), **Y/B** (Touch), **menu** (Vive) ~0.6 s | either hand; hold time = `ToggleHoldMs` |
+| Check / uncheck item | **trigger** on the free hand while pointing at the panel | hovered row is highlighted |
+
+Rebind anytime in **SteamVR → Settings → Controllers → Manage Controller
+Bindings → ExfilZone Wrist Tracker** (the app registers itself with SteamVR on
+launch). If a default binding does not load on your controller type, bind the
+two actions there manually once.
+
+There is no visible laser beam yet — aim with the free controller and watch
+for the row highlight, then pull the trigger.
 
 ## Configuration
 
-`config.json` is created next to the executable on first run:
+`config.json` is created next to the executable on first run and hot-reloads
+on save — tune the offsets live while wearing the headset:
 
 ```json
 {
@@ -96,7 +105,10 @@ one run without editing the config.
   "PositionMeters": { "X": 0, "Y": 0.02, "Z": 0.13 },
   "RotationDegrees": { "X": -90, "Y": 0, "Z": 0 },
   "PanelPixelWidth": 600,
-  "PanelPixelHeight": 400
+  "PanelPixelHeight": 480,
+  "StartVisible": true,
+  "ToggleHoldMs": 600,
+  "MaxLaserDistanceMeters": 2
 }
 ```
 
@@ -104,55 +116,100 @@ one run without editing the config.
 | --- | --- |
 | `Hand` | `"left"` or `"right"` — which controller carries the panel |
 | `WidthMeters` | physical panel width; height follows the pixel aspect ratio |
-| `PositionMeters` | offset from the controller origin, in meters, controller-local axes |
+| `PositionMeters` | offset from the controller origin, meters, controller-local axes |
 | `RotationDegrees` | `X` = pitch, `Y` = yaw, `Z` = roll; applied yaw → pitch → roll |
-| `PanelPixelWidth/Height` | texture resolution |
+| `PanelPixelWidth/Height` | texture resolution (also defines how many rows fit) |
+| `StartVisible` | show the panel right after launch |
+| `ToggleHoldMs` | how long the toggle button must be held |
+| `MaxLaserDistanceMeters` | laser clicks farther than this are ignored |
 
 Controller-local axes (OpenVR convention): **+X** to the right, **+Y** up out
 of the button face, **−Z** along the pointing direction. So `Z: 0.13` moves the
 panel 13 cm back toward your wrist, and pitch −90° lays it flat, facing up like
-a watch face. The `▲ TOP` marker on the panel shows where its top edge points,
-which makes tuning much easier.
+a watch face.
 
 Tuning tips — controller origins differ between Index knuckles, Touch and Vive
-wands, so expect to adjust:
+wands, so expect to adjust (live, thanks to hot-reload):
 
 - panel too far / too close along the arm → change `Z` (typical range 0.10–0.18);
 - text runs across the arm instead of along it → roll `Z: 90` or `-90`;
 - you see the back side of the panel → flip pitch to `+90` or add yaw `180`;
 - panel blocks your aim → shrink `WidthMeters`, raise `Y` slightly.
 
-## Items database
+## Data files
 
-[data/items_database.json](data/items_database.json) is the static reference
-of game items (id, name, category, optional icon/note). It ships with the app
-and is meant to be edited with a plain text editor after game patches — no
-rebuild required. The current entries are **samples**: fill in real items from
-the game's wiki and community sheets. The active checklist (next milestone)
-will reference these items by `id` and live in a separate file.
+Two separate concerns, both plain JSON, both hot-reloaded:
+
+**`data/items_database.json`** — the static reference of game items (id, name,
+category, optional icon/note). Ships with the app; edit it with a text editor
+after game patches, no rebuild needed. The current entries are **samples** —
+fill in real items from the game's wiki and community sheets.
+
+**`checklist.json`** (created next to the exe on first run) — your active
+hunt: references database items by id plus a found flag. This is also how you
+add/remove items in the MVP:
+
+```json
+{
+  "entries": [
+    { "itemId": "meds-first-aid-kit", "found": false },
+    { "itemId": "elec-graphics-card", "found": true }
+  ]
+}
+```
+
+Rows that don't fit the panel show up as “+N more”; raise `PanelPixelHeight`
+to fit more rows (44 px per row).
+
+## What you should see (verification checklist)
+
+1. Start SteamVR, turn both controllers on, run the tracker.
+2. Console: `Connected to SteamVR` → `SteamVR Input ready` → `Panel attached`.
+3. In the headset: a dark checklist panel with sample items on the back of
+   your right forearm, following the controller like a watch.
+4. Point at it with the left controller — rows highlight; pull the trigger —
+   the checkbox ticks, the name gets struck through, the progress counter in
+   the header updates, and `checklist.json` on disk changes.
+5. Hold the toggle button ~0.6 s — panel fades out; hold again — fades back.
+6. Edit `config.json` / `checklist.json` / the item database on the desktop —
+   the panel updates within a second, no restart.
+7. Turn the watch-hand controller off → panel hides; on → reappears. Restart
+   the tracker → checked items are still checked.
+8. Quit SteamVR → the tracker prints `SteamVR is shutting down` and exits.
 
 ## Project layout
 
 ```
 src/ExfilZoneTracker/
-  Program.cs           entry point, main loop, clean shutdown
+  Program.cs           entry point, main loop, config hot-reload, clean shutdown
   OverlayManager.cs    OpenVR init, overlay lifecycle, SteamVR event pump
   WristAttachment.cs   controller discovery + offset matrix (wrist attach)
-  PanelRenderer.cs     GDI+ → RGBA buffer for SetOverlayRaw
-  AppConfig.cs         config model + load/create logic
+  ChecklistUI.cs       visibility/fade, laser hover + click, texture updates
+  PanelRenderer.cs     GDI+ checklist rendering + pixel layout for hit-testing
+  InputManager.cs      SteamVR Input: app/action manifests, toggle + interact
+  ChecklistData.cs     active checklist model, persistence, file watchers
+  ItemDatabase.cs      game-item reference loading
+  AppConfig.cs         config model + load/create
+  app.vrmanifest       SteamVR application manifest (app key, action manifest)
+  input/               action manifest + default bindings (Index/Touch/Vive)
   OpenVR/              vendored Valve C# binding + win64 openvr_api.dll
-data/items_database.json   editable game-item reference (future milestone)
+data/items_database.json   editable game-item reference
 ```
 
 ## Troubleshooting
 
 - **“SteamVR is not running…”** — start SteamVR first, then the tracker.
-- **Panel not visible** — is the right (configured) controller on and tracked?
-  The panel hides while the controller is missing; watch the console. Also
-  rotate your wrist as if checking a watch — with default offsets the panel
-  faces up from your forearm.
-- **Panel colors look swapped (blue/orange tint)** — open an issue; the channel
-  order fix is a one-liner in `PanelRenderer.ToRgba`.
+- **Panel not visible** — is the watch-hand controller on and tracked? The
+  panel hides while it is missing; watch the console. Also rotate your wrist
+  as if checking a watch, and check `StartVisible` in config.
+- **Buttons do nothing** — console should say `SteamVR Input ready`. Open
+  SteamVR's controller-bindings UI and make sure the two tracker actions are
+  bound for your controller type.
+- **Clicks land on the wrong row** — please open an issue: the UV→pixel
+  mapping in `ChecklistUI.ComputeHoveredRow` likely needs its vertical flip
+  inverted for your setup.
+- **Panel colors look swapped (blue/orange tint)** — open an issue; the
+  channel order fix is a one-liner in `PanelRenderer.ToRgba`.
 - **Panel too big or in the way** — lower `WidthMeters`, increase `Z`.
 
 ## License

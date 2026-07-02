@@ -5,9 +5,10 @@ using System.Text.Json.Serialization;
 namespace ExfilZoneTracker;
 
 /// <summary>
-/// User settings, stored as config.json next to the executable.
-/// Position is in meters and rotation in degrees, both in the controller's local
-/// coordinate space: +X right, +Y up out of the button face, -Z along the pointing direction.
+/// User settings, stored as config.json next to the executable and hot-reloaded while
+/// the app runs. Position is in meters and rotation in degrees, both in the controller's
+/// local coordinate space: +X right, +Y up out of the button face, -Z along the pointing
+/// direction.
 /// </summary>
 public sealed class AppConfig
 {
@@ -22,13 +23,36 @@ public sealed class AppConfig
     public Vec3 RotationDegrees { get; set; } = new() { X = -90f, Y = 0f, Z = 0f };
 
     public int PanelPixelWidth { get; set; } = 600;
-    public int PanelPixelHeight { get; set; } = 400;
+    public int PanelPixelHeight { get; set; } = 480;
+
+    /// <summary>Whether the panel is visible right after launch.</summary>
+    public bool StartVisible { get; set; } = true;
+
+    /// <summary>How long the toggle button must be held to show/hide the panel.</summary>
+    public int ToggleHoldMs { get; set; } = 600;
+
+    /// <summary>Laser clicks farther than this from the panel are ignored.</summary>
+    public float MaxLaserDistanceMeters { get; set; } = 2.0f;
 
     [JsonIgnore]
     public string HandNormalized => Hand.Trim().ToLowerInvariant() == "left" ? "left" : "right";
 
     [JsonIgnore]
     public bool IsLeftHand => HandNormalized == "left";
+
+    /// <summary>Applies freshly loaded values onto the shared instance (hot reload).</summary>
+    public void CopyFrom(AppConfig other)
+    {
+        Hand = other.Hand;
+        WidthMeters = other.WidthMeters;
+        PositionMeters = other.PositionMeters;
+        RotationDegrees = other.RotationDegrees;
+        PanelPixelWidth = other.PanelPixelWidth;
+        PanelPixelHeight = other.PanelPixelHeight;
+        StartVisible = other.StartVisible;
+        ToggleHoldMs = other.ToggleHoldMs;
+        MaxLaserDistanceMeters = other.MaxLaserDistanceMeters;
+    }
 }
 
 public sealed class Vec3

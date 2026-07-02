@@ -7,8 +7,8 @@ namespace ExfilZoneTracker;
 /// <summary>
 /// Keeps the overlay glued to the configured controller. Once
 /// SetOverlayTransformTrackedDeviceRelative is applied, the compositor tracks the device
-/// for us; this class only re-applies the transform when the controller (re)appears or
-/// its device index changes, and hides the panel while the controller is missing.
+/// for us; this class re-applies the transform when the controller (re)appears, its
+/// device index changes, or the config is hot-reloaded. Visibility is owned by ChecklistUI.
 /// </summary>
 public sealed class WristAttachment
 {
@@ -16,10 +16,10 @@ public sealed class WristAttachment
 
     private readonly OverlayManager _overlay;
     private readonly AppConfig _config;
-    private readonly ETrackedControllerRole _role;
-    private readonly HmdMatrix34_t _offset;
     private readonly Stopwatch _sinceLastCheck = Stopwatch.StartNew();
 
+    private ETrackedControllerRole _role;
+    private HmdMatrix34_t _offset;
     private uint _deviceIndex = OpenVR.k_unTrackedDeviceIndexInvalid;
     private bool _reportedWaiting;
 
@@ -27,13 +27,23 @@ public sealed class WristAttachment
     {
         _overlay = overlay;
         _config = config;
-        _role = config.IsLeftHand ? ETrackedControllerRole.LeftHand : ETrackedControllerRole.RightHand;
-        _offset = BuildOffset(config);
+        Reconfigure();
+    }
+
+    public bool Present => _deviceIndex != OpenVR.k_unTrackedDeviceIndexInvalid;
+
+    /// <summary>Re-reads hand/offset from config and forces a re-attach on the next update.</summary>
+    public void Reconfigure()
+    {
+        _role = _config.IsLeftHand ? ETrackedControllerRole.LeftHand : ETrackedControllerRole.RightHand;
+        _offset = BuildOffset(_config);
+        _deviceIndex = OpenVR.k_unTrackedDeviceIndexInvalid;
+        _reportedWaiting = false;
     }
 
     public void Update(bool devicesChanged)
     {
-        if (!devicesChanged && _sinceLastCheck.ElapsedMilliseconds < RecheckIntervalMs)
+        if (!devicesChanged && Present && _sinceLastCheck.ElapsedMilliseconds < RecheckIntervalMs)
             return;
         _sinceLastCheck.Restart();
 
@@ -42,10 +52,8 @@ public sealed class WristAttachment
             return;
         _deviceIndex = index;
 
-        var vrOverlay = OpenVR.Overlay;
         if (index == OpenVR.k_unTrackedDeviceIndexInvalid)
         {
-            vrOverlay.HideOverlay(_overlay.Handle);
             if (!_reportedWaiting)
             {
                 Console.WriteLine($"Waiting for the {_config.HandNormalized} controller (panel hidden).");
@@ -55,14 +63,14 @@ public sealed class WristAttachment
         }
 
         var offset = _offset;
-        var error = vrOverlay.SetOverlayTransformTrackedDeviceRelative(_overlay.Handle, index, ref offset);
+        var error = OpenVR.Overlay.SetOverlayTransformTrackedDeviceRelative(_overlay.Handle, index, ref offset);
         if (error != EVROverlayError.None)
         {
             Console.Error.WriteLine($"warning: could not attach overlay to device {index}: {error}");
+            _deviceIndex = OpenVR.k_unTrackedDeviceIndexInvalid;
             return;
         }
 
-        vrOverlay.ShowOverlay(_overlay.Handle);
         _reportedWaiting = false;
         Console.WriteLine($"Panel attached to the {_config.HandNormalized} controller (device #{index}).");
     }

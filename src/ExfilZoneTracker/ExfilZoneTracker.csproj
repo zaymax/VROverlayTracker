@@ -21,6 +21,11 @@
   <ItemGroup>
     <!-- Native OpenVR runtime; Link flattens it next to the executable so DllImport can find it -->
     <None Include="OpenVR\openvr_api.dll" Link="openvr_api.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- SteamVR app manifest + input actions/bindings, loaded by absolute path at runtime -->
+    <None Include="app.vrmanifest" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="input\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Editable game-item reference database -->
+    <None Include="..\..\data\items_database.json" Link="data\items_database.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

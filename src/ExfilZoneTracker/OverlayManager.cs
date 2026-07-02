@@ -42,17 +42,12 @@ public sealed class OverlayManager : IDisposable
         Handle = handle;
 
         vrOverlay.SetOverlayWidthInMeters(Handle, config.WidthMeters);
-        vrOverlay.SetOverlayAlpha(Handle, 1f);
-
-        UploadPanelTexture(config);
         Console.WriteLine($"Connected to SteamVR, overlay '{OverlayKey}' created.");
     }
 
-    private void UploadPanelTexture(AppConfig config)
+    /// <summary>Uploads an RGBA8 buffer as the overlay texture (SetOverlayRaw copies it synchronously).</summary>
+    public void UploadTexture(byte[] rgba, int width, int height)
     {
-        var rgba = PanelRenderer.RenderPlaceholder(config, out var width, out var height);
-
-        // SetOverlayRaw copies the RGBA8 buffer synchronously, so pinning just for the call is enough.
         var pinned = GCHandle.Alloc(rgba, GCHandleType.Pinned);
         try
         {
