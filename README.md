@@ -49,12 +49,20 @@ executable.
 ## Requirements
 
 - Windows 10/11 x64, Steam + SteamVR, any SteamVR-compatible headset
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build
-  (published releases will not need it)
+- To build from source: the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+  (`winget install Microsoft.DotNet.SDK.8`). Prebuilt releases need no .NET at all.
 
 The code cross-compiles from macOS/Linux, but only runs on Windows.
 
-## Build & run (on the Windows VR machine)
+## Get it on the Windows VR machine
+
+**Easiest: download a prebuilt build.** Grab `ExfilZoneTracker-win-x64.zip`
+from [Releases](https://github.com/zaymax/VROverlayTracker/releases) (every
+push to `main` also produces a downloadable artifact under
+[Actions](https://github.com/zaymax/VROverlayTracker/actions)), unzip it
+anywhere and run `ExfilZoneTracker.exe`. Self-contained — no .NET required.
+
+**Or build from source** (needs the .NET 8 SDK):
 
 ```powershell
 git clone https://github.com/zaymax/VROverlayTracker.git
